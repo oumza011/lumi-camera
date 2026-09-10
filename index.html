@@ -1,0 +1,455 @@
+<title>Lumi Camera</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&display=swap">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#000000">
+
+<style>
+:root {
+  --bg: #080808;
+  --glass: rgba(8,8,8,0.6);
+  --text: #f0f0f0;
+  --muted: rgba(240,240,240,0.42);
+  --accent: #f0a030;
+  --ring: rgba(255,255,255,0.9);
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+html,body{
+  width:100dvw;height:100dvh;
+  background:var(--bg);overflow:hidden;
+  font-family:'Instrument Sans',system-ui,sans-serif;
+  color:var(--text);
+  -webkit-user-select:none;user-select:none;
+  touch-action:manipulation;
+}
+
+canvas#gl{position:fixed;inset:0;width:100%;height:100%}
+video{display:none}
+
+/* Permission */
+#perm{
+  position:fixed;inset:0;z-index:50;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:18px;padding:40px 32px;
+  background:var(--bg);text-align:center;
+}
+#perm .cam-icon{color:var(--muted)}
+#perm h2{font-size:1.2rem;font-weight:600}
+#perm p{color:var(--muted);font-size:.88rem;line-height:1.7;max-width:270px}
+#perm-btn{
+  margin-top:6px;padding:14px 38px;
+  border-radius:100px;border:none;
+  background:var(--accent);color:#000;
+  font-family:inherit;font-size:.95rem;font-weight:600;
+  cursor:pointer;
+}
+#perm-btn:active{opacity:.85}
+
+/* Top bar */
+#topbar{
+  position:fixed;top:0;left:0;right:0;
+  display:flex;justify-content:flex-end;align-items:center;
+  padding:14px 20px;
+  padding-top:max(14px,env(safe-area-inset-top));
+  z-index:10;pointer-events:none;
+}
+#topbar>*{pointer-events:auto}
+
+/* Bottom bar */
+#bottombar{
+  position:fixed;bottom:0;left:0;right:0;
+  display:flex;flex-direction:column;gap:14px;
+  padding-bottom:max(22px,env(safe-area-inset-bottom));
+  z-index:10;
+}
+
+/* Filter list */
+#filter-list{
+  display:flex;gap:12px;overflow-x:auto;
+  scroll-snap-type:x mandatory;padding:6px 22px;
+  scrollbar-width:none;-ms-overflow-style:none;
+}
+#filter-list::-webkit-scrollbar{display:none}
+
+.fi{
+  flex:0 0 auto;scroll-snap-align:center;
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  cursor:pointer;-webkit-tap-highlight-color:transparent;
+}
+.fi-dot{
+  width:54px;height:54px;border-radius:14px;
+  border:2.5px solid transparent;
+  transition:border-color .2s, box-shadow .2s;
+  overflow:hidden;flex-shrink:0;
+}
+.fi.active .fi-dot{
+  border-color:var(--accent);
+  box-shadow:0 0 0 2px rgba(240,160,48,.25);
+}
+.fi-name{
+  font-size:.58rem;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--muted);transition:color .2s;
+}
+.fi.active .fi-name{color:var(--accent)}
+
+/* Intensity */
+#intensity-wrap{
+  display:flex;align-items:center;gap:10px;
+  padding:0 22px;transition:opacity .22s;
+}
+#intensity-wrap.hidden{opacity:0;pointer-events:none}
+#int-label{font-size:.62rem;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);flex-shrink:0}
+#intensity{
+  flex:1;-webkit-appearance:none;appearance:none;
+  height:2px;border-radius:1px;
+  background:rgba(255,255,255,.22);outline:none;cursor:pointer;
+}
+#intensity::-webkit-slider-thumb{
+  -webkit-appearance:none;
+  width:18px;height:18px;border-radius:50%;
+  background:#fff;cursor:pointer;
+  box-shadow:0 1px 4px rgba(0,0,0,.4);
+}
+#int-val{
+  font-size:.62rem;color:var(--muted);
+  min-width:34px;text-align:right;
+  font-variant-numeric:tabular-nums;flex-shrink:0;
+}
+
+/* Capture row */
+#cap-row{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:2px 36px;
+}
+
+.icon-btn{
+  width:48px;height:48px;border-radius:50%;border:none;
+  background:var(--glass);
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;color:var(--text);flex-shrink:0;
+  -webkit-tap-highlight-color:transparent;
+}
+.icon-btn:active{opacity:.7}
+
+#capture-btn{
+  width:78px;height:78px;border-radius:50%;
+  border:3.5px solid var(--ring);background:transparent;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;-webkit-tap-highlight-color:transparent;
+}
+#capture-btn::after{
+  content:'';width:64px;height:64px;border-radius:50%;
+  background:#fff;transition:transform .1s;
+}
+#capture-btn:active::after{transform:scale(.82)}
+
+#thumb{
+  width:48px;height:48px;border-radius:10px;
+  border:2px solid rgba(255,255,255,.28);
+  background:rgba(255,255,255,.06);
+  overflow:hidden;object-fit:cover;cursor:pointer;
+}
+#thumb.empty{visibility:hidden}
+
+/* Flash & toast */
+#flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:40}
+#toast{
+  position:fixed;top:50%;left:50%;
+  transform:translate(-50%,-50%);
+  background:rgba(0,0,0,.75);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  color:#fff;padding:10px 24px;border-radius:100px;
+  font-size:.88rem;white-space:nowrap;
+  opacity:0;pointer-events:none;z-index:60;
+  transition:opacity .25s;
+}
+</style>
+
+<canvas id="gl"></canvas>
+<video id="video" playsinline muted autoplay></video>
+
+<div id="perm">
+  <svg class="cam-icon" width="60" height="60" viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+    <circle cx="12" cy="13" r="4"/>
+  </svg>
+  <h2>Allow Camera</h2>
+  <p>Lumi applies live color filters to your camera. Nothing leaves your device.</p>
+  <button id="perm-btn">Open Camera</button>
+</div>
+
+<div id="topbar">
+  <button class="icon-btn" id="flip-btn" title="Flip camera">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M1 4v6h6"/><path d="M23 20v-6h-6"/>
+      <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15"/>
+    </svg>
+  </button>
+</div>
+
+<div id="bottombar">
+  <div id="filter-list"></div>
+  <div id="intensity-wrap" class="hidden">
+    <span id="int-label">Intensity</span>
+    <input id="intensity" type="range" min="0" max="100" value="100">
+    <span id="int-val">100%</span>
+  </div>
+  <div id="cap-row">
+    <img id="thumb" class="empty" alt="Last photo">
+    <button id="capture-btn" title="Capture"></button>
+    <div style="width:48px;height:48px"></div>
+  </div>
+</div>
+
+<div id="flash"></div>
+<div id="toast"></div>
+
+<script>
+const FILTERS = [
+  { name:'Original', swatch:'linear-gradient(135deg,#4a4a4a,#232323)', b:0,   c:1.00, s:1.00, w:0,    t:0,   v:0    },
+  { name:'Natural',  swatch:'linear-gradient(135deg,#7a9e6b,#c9b89c)', b:.02, c:1.05, s:1.12, w:.28,  t:.04, v:.08  },
+  { name:'Vivid',    swatch:'linear-gradient(135deg,#e0354a,#3fc4e0)', b:0,   c:1.22, s:1.45, w:.1,   t:0,   v:.14  },
+  { name:'Fade',     swatch:'linear-gradient(135deg,#b8afc8,#d6c8b6)', b:.07, c:.80,  s:.72,  w:.12,  t:.1,  v:0    },
+  { name:'Noir',     swatch:'linear-gradient(135deg,#111,#555)',        b:-.04,c:1.38, s:0,    w:0,    t:0,   v:.34  },
+  { name:'Golden',   swatch:'linear-gradient(135deg,#c48a08,#f5d96a)', b:.04, c:1.12, s:1.15, w:.88,  t:-.2, v:.22  },
+  { name:'Cool',     swatch:'linear-gradient(135deg,#3a78bc,#88c4e8)', b:0,   c:1.06, s:.88,  w:-.55, t:.1,  v:.1   },
+  { name:'Drama',    swatch:'linear-gradient(135deg,#190f2e,#3a2858)', b:-.06,c:1.48, s:.72,  w:-.1,  t:.12, v:.48  },
+];
+
+const canvas = document.getElementById('gl');
+const video  = document.getElementById('video');
+
+const gl = canvas.getContext('webgl', { preserveDrawingBuffer: true, alpha: false });
+if (!gl) { document.body.innerHTML = '<p style="color:#fff;padding:32px">WebGL not supported</p>'; }
+
+/* ---- Shaders ---- */
+const VS = `
+attribute vec2 a_pos;
+varying vec2 v_uv;
+uniform vec2 u_scale;
+uniform bool u_mirror;
+void main(){
+  vec2 uv = a_pos * .5 + .5;
+  uv.y = 1. - uv.y;
+  uv = (uv - .5) * u_scale + .5;
+  if(u_mirror) uv.x = 1. - uv.x;
+  v_uv = uv;
+  gl_Position = vec4(a_pos, 0., 1.);
+}`;
+
+const FS = `
+precision mediump float;
+uniform sampler2D u_tex;
+uniform float u_b, u_c, u_s, u_w, u_t, u_v;
+varying vec2 v_uv;
+void main(){
+  vec4 col = texture2D(u_tex, v_uv);
+  // warmth / tint
+  col.r = clamp(col.r + u_w*.12, 0., 1.);
+  col.b = clamp(col.b - u_w*.09, 0., 1.);
+  col.g = clamp(col.g + u_t*.06, 0., 1.);
+  // saturation
+  float lum = dot(col.rgb, vec3(.2126,.7152,.0722));
+  col.rgb = mix(vec3(lum), col.rgb, u_s);
+  // contrast
+  col.rgb = (col.rgb - .5) * u_c + .5;
+  // brightness
+  col.rgb += u_b;
+  // vignette
+  vec2 d = v_uv * 2. - 1.;
+  float vign = 1. - smoothstep(.3, 1.1, dot(d,d) * u_v * 1.8);
+  col.rgb *= vign;
+  gl_FragColor = vec4(clamp(col.rgb, 0., 1.), 1.);
+}`;
+
+function compile(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  return s;
+}
+const prog = gl.createProgram();
+gl.attachShader(prog, compile(gl.VERTEX_SHADER, VS));
+gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FS));
+gl.linkProgram(prog); gl.useProgram(prog);
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW);
+const aPos = gl.getAttribLocation(prog, 'a_pos');
+gl.enableVertexAttribArray(aPos);
+gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+const uScale  = gl.getUniformLocation(prog, 'u_scale');
+const uMirror = gl.getUniformLocation(prog, 'u_mirror');
+const uB = gl.getUniformLocation(prog, 'u_b');
+const uC = gl.getUniformLocation(prog, 'u_c');
+const uS = gl.getUniformLocation(prog, 'u_s');
+const uW = gl.getUniformLocation(prog, 'u_w');
+const uT = gl.getUniformLocation(prog, 'u_t');
+const uV = gl.getUniformLocation(prog, 'u_v');
+
+const tex = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, tex);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+/* ---- State ---- */
+let activeIdx = 0;
+let intensity = 1.0;
+let facingFront = true;
+let stream = null;
+let animId = null;
+let lastThumbUrl = null;
+
+function resizeCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width  = Math.round(window.innerWidth * dpr);
+  canvas.height = Math.round(window.innerHeight * dpr);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+function uvScale() {
+  if (!video.videoWidth) return [1, 1];
+  const vA = video.videoWidth / video.videoHeight;
+  const cA = canvas.width / canvas.height;
+  return vA > cA ? [cA / vA, 1] : [1, vA / cA];
+}
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+function render() {
+  animId = requestAnimationFrame(render);
+  if (video.readyState < 2) return;
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
+
+  const f = FILTERS[activeIdx];
+  const t = intensity;
+  gl.uniform2fv(uScale, uvScale());
+  gl.uniform1i(uMirror, facingFront ? 1 : 0);
+  gl.uniform1f(uB, lerp(0,    f.b, t));
+  gl.uniform1f(uC, lerp(1,    f.c, t));
+  gl.uniform1f(uS, lerp(1,    f.s, t));
+  gl.uniform1f(uW, lerp(0,    f.w, t));
+  gl.uniform1f(uT, lerp(0,    f.t, t));
+  gl.uniform1f(uV, lerp(0,    f.v, t));
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+/* ---- Camera ---- */
+async function startCamera(front) {
+  if (stream) { stream.getTracks().forEach(t => t.stop()); }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: front ? 'user' : 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+    facingFront = front;
+    if (!animId) render();
+    document.getElementById('perm').style.display = 'none';
+  } catch(e) {
+    showToast('Camera access denied');
+  }
+}
+
+/* ---- UI: Filters ---- */
+const list = document.getElementById('filter-list');
+FILTERS.forEach((f, i) => {
+  const item = document.createElement('div');
+  item.className = 'fi' + (i === 0 ? ' active' : '');
+  const dot = document.createElement('div');
+  dot.className = 'fi-dot';
+  dot.style.background = f.swatch;
+  const name = document.createElement('div');
+  name.className = 'fi-name';
+  name.textContent = f.name;
+  item.appendChild(dot); item.appendChild(name);
+  item.addEventListener('click', () => selectFilter(i));
+  list.appendChild(item);
+});
+
+function selectFilter(i) {
+  document.querySelectorAll('.fi').forEach((el, j) => el.classList.toggle('active', j === i));
+  activeIdx = i;
+  const wrap = document.getElementById('intensity-wrap');
+  wrap.classList.toggle('hidden', i === 0);
+}
+
+/* ---- UI: Intensity ---- */
+const intSlider = document.getElementById('intensity');
+const intVal    = document.getElementById('int-val');
+intSlider.addEventListener('input', () => {
+  intensity = intSlider.value / 100;
+  intVal.textContent = intSlider.value + '%';
+});
+
+/* ---- UI: Flip ---- */
+document.getElementById('flip-btn').addEventListener('click', () => {
+  startCamera(!facingFront);
+});
+
+/* ---- UI: Capture ---- */
+document.getElementById('capture-btn').addEventListener('click', capture);
+
+function capture() {
+  // Flash
+  const flash = document.getElementById('flash');
+  flash.style.transition = 'none'; flash.style.opacity = '1';
+  requestAnimationFrame(() => {
+    flash.style.transition = 'opacity .4s';
+    flash.style.opacity = '0';
+  });
+
+  // Draw current GL frame to a 2D canvas for save
+  const out = document.createElement('canvas');
+  out.width = canvas.width; out.height = canvas.height;
+  const ctx = out.getContext('2d');
+  ctx.drawImage(canvas, 0, 0);
+
+  out.toBlob(blob => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+
+    // Update thumbnail
+    const thumb = document.getElementById('thumb');
+    if (lastThumbUrl) URL.revokeObjectURL(lastThumbUrl);
+    lastThumbUrl = url;
+    thumb.src = url;
+    thumb.classList.remove('empty');
+
+    // Download / save
+    const a = document.createElement('a');
+    a.href = url; a.download = 'lumi-' + Date.now() + '.jpg';
+    a.click();
+
+    showToast('Photo saved');
+  }, 'image/jpeg', 0.92);
+}
+
+/* ---- Toast ---- */
+let toastTimer = null;
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.opacity = '1';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.style.opacity = '0'; }, 2000);
+}
+
+/* ---- Init ---- */
+document.getElementById('perm-btn').addEventListener('click', () => startCamera(true));
+
+// Auto-start on supported browsers
+navigator.mediaDevices?.getUserMedia({ video: true, audio: false })
+  .then(s => { s.getTracks().forEach(t => t.stop()); startCamera(true); })
+  .catch(() => {}); // show permission screen
+</script>
