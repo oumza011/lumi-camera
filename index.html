@@ -210,15 +210,16 @@ video{display:none}
 
 <script>
 const FILTERS = [
-  { name:'Original', swatch:'linear-gradient(135deg,#4a4a4a,#232323)', b:0,   c:1.00, s:1.00, w:0,    t:0,   v:0,   soft:0    },
-  { name:'เนียน',    swatch:'linear-gradient(135deg,#f7c5b0,#fde8d8)', b:.05, c:.88,  s:.95,  w:.45,  t:.06, v:.06, soft:.72  },
-  { name:'Natural',  swatch:'linear-gradient(135deg,#7a9e6b,#c9b89c)', b:.02, c:1.05, s:1.12, w:.28,  t:.04, v:.08, soft:0    },
-  { name:'Vivid',    swatch:'linear-gradient(135deg,#e0354a,#3fc4e0)', b:0,   c:1.22, s:1.45, w:.1,   t:0,   v:.14, soft:0    },
-  { name:'Fade',     swatch:'linear-gradient(135deg,#b8afc8,#d6c8b6)', b:.07, c:.80,  s:.72,  w:.12,  t:.1,  v:0,   soft:0    },
-  { name:'Noir',     swatch:'linear-gradient(135deg,#111,#555)',        b:-.04,c:1.38, s:0,    w:0,    t:0,   v:.34, soft:0    },
-  { name:'Golden',   swatch:'linear-gradient(135deg,#c48a08,#f5d96a)', b:.04, c:1.12, s:1.15, w:.88,  t:-.2, v:.22, soft:0    },
-  { name:'Cool',     swatch:'linear-gradient(135deg,#3a78bc,#88c4e8)', b:0,   c:1.06, s:.88,  w:-.55, t:.1,  v:.1,  soft:0    },
-  { name:'Drama',    swatch:'linear-gradient(135deg,#190f2e,#3a2858)', b:-.06,c:1.48, s:.72,  w:-.1,  t:.12, v:.48, soft:0    },
+  { name:'Original', swatch:'linear-gradient(135deg,#4a4a4a,#232323)', b:0,   c:1.00, s:1.00, w:0,    t:0,   v:0,   soft:0,   white:0   },
+  { name:'เนียน',    swatch:'linear-gradient(135deg,#f7c5b0,#fde8d8)', b:.05, c:.88,  s:.95,  w:.45,  t:.06, v:.06, soft:.72, white:0   },
+  { name:'ฟันขาว',  swatch:'linear-gradient(135deg,#e8f4ff,#ffffff)', b:.04, c:.98,  s:1.02, w:.1,   t:0,   v:.04, soft:.18, white:1.0 },
+  { name:'Natural',  swatch:'linear-gradient(135deg,#7a9e6b,#c9b89c)', b:.02, c:1.05, s:1.12, w:.28,  t:.04, v:.08, soft:0,   white:0   },
+  { name:'Vivid',    swatch:'linear-gradient(135deg,#e0354a,#3fc4e0)', b:0,   c:1.22, s:1.45, w:.1,   t:0,   v:.14, soft:0,   white:0   },
+  { name:'Fade',     swatch:'linear-gradient(135deg,#b8afc8,#d6c8b6)', b:.07, c:.80,  s:.72,  w:.12,  t:.1,  v:0,   soft:0,   white:0   },
+  { name:'Noir',     swatch:'linear-gradient(135deg,#111,#555)',        b:-.04,c:1.38, s:0,    w:0,    t:0,   v:.34, soft:0,   white:0   },
+  { name:'Golden',   swatch:'linear-gradient(135deg,#c48a08,#f5d96a)', b:.04, c:1.12, s:1.15, w:.88,  t:-.2, v:.22, soft:0,   white:0   },
+  { name:'Cool',     swatch:'linear-gradient(135deg,#3a78bc,#88c4e8)', b:0,   c:1.06, s:.88,  w:-.55, t:.1,  v:.1,  soft:0,   white:0   },
+  { name:'Drama',    swatch:'linear-gradient(135deg,#190f2e,#3a2858)', b:-.06,c:1.48, s:.72,  w:-.1,  t:.12, v:.48, soft:0,   white:0   },
 ];
 
 const canvas = document.getElementById('gl');
@@ -245,7 +246,7 @@ void main(){
 const FS = `
 precision mediump float;
 uniform sampler2D u_tex;
-uniform float u_b, u_c, u_s, u_w, u_t, u_v, u_soft;
+uniform float u_b, u_c, u_s, u_w, u_t, u_v, u_soft, u_white;
 uniform vec2 u_texel;
 varying vec2 v_uv;
 
@@ -285,6 +286,15 @@ void main(){
     col = mix(col, blurred, skinMask * u_soft * 0.82);
     // subtle highlight glow on bright areas (TikTok beauty glow)
     col.rgb += blurred.rgb * u_soft * 0.06 * skinMask;
+  }
+
+  // teeth whitening: target bright + slightly yellow pixels
+  if(u_white > 0.0){
+    float luma_w = dot(col.rgb, vec3(.2126,.7152,.0722));
+    float yellowness = max(0.0, (col.r + col.g) * 0.5 - col.b - 0.04);
+    float toothMask = smoothstep(0.38, 0.68, luma_w) * smoothstep(0.0, 0.14, yellowness);
+    float whitened = luma_w + u_white * 0.18;
+    col.rgb = mix(col.rgb, vec3(whitened), toothMask * u_white * 0.9);
   }
 
   // warmth / tint
@@ -331,6 +341,7 @@ const uW    = gl.getUniformLocation(prog, 'u_w');
 const uT    = gl.getUniformLocation(prog, 'u_t');
 const uV    = gl.getUniformLocation(prog, 'u_v');
 const uSoft  = gl.getUniformLocation(prog, 'u_soft');
+const uWhite = gl.getUniformLocation(prog, 'u_white');
 const uTexel = gl.getUniformLocation(prog, 'u_texel');
 
 const tex = gl.createTexture();
@@ -382,7 +393,8 @@ function render() {
   gl.uniform1f(uW,    lerp(0,    f.w,    t));
   gl.uniform1f(uT,    lerp(0,    f.t,    t));
   gl.uniform1f(uV,    lerp(0,    f.v,    t));
-  gl.uniform1f(uSoft, lerp(0,    f.soft, t));
+  gl.uniform1f(uSoft,  lerp(0, f.soft,  t));
+  gl.uniform1f(uWhite, lerp(0, f.white, t));
   gl.uniform2f(uTexel, 1.0 / canvas.width, 1.0 / canvas.height);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
