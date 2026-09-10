@@ -416,9 +416,10 @@ function capture() {
   const ctx = out.getContext('2d');
   ctx.drawImage(canvas, 0, 0);
 
-  out.toBlob(blob => {
+  out.toBlob(async blob => {
     if (!blob) return;
     const url = URL.createObjectURL(blob);
+    const filename = 'lumi-' + Date.now() + '.jpg';
 
     // Update thumbnail
     const thumb = document.getElementById('thumb');
@@ -427,11 +428,22 @@ function capture() {
     thumb.src = url;
     thumb.classList.remove('empty');
 
-    // Download / save
-    const a = document.createElement('a');
-    a.href = url; a.download = 'lumi-' + Date.now() + '.jpg';
-    a.click();
+    // iOS: use Web Share API → Share Sheet → "Save Image" → Camera Roll
+    const file = new File([blob], filename, { type: 'image/jpeg' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: 'Lumi Photo' });
+        return;
+      } catch(e) {
+        if (e.name === 'AbortError') return; // user cancelled share sheet
+        // fall through to download on other errors
+      }
+    }
 
+    // Fallback for desktop browsers
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    a.click();
     showToast('Photo saved');
   }, 'image/jpeg', 0.92);
 }
