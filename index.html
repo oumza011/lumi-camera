@@ -248,23 +248,45 @@ uniform sampler2D u_tex;
 uniform float u_b, u_c, u_s, u_w, u_t, u_v, u_soft;
 uniform vec2 u_texel;
 varying vec2 v_uv;
+
+vec4 sampleBlur(float r) {
+  float r2 = r * 1.8;
+  return (
+    texture2D(u_tex, v_uv + vec2(-r2,-r2)*u_texel) +
+    texture2D(u_tex, v_uv + vec2(  0.,-r2)*u_texel) +
+    texture2D(u_tex, v_uv + vec2( r2,-r2)*u_texel) +
+    texture2D(u_tex, v_uv + vec2(-r2,  0.)*u_texel) +
+    texture2D(u_tex, v_uv + vec2( r2,  0.)*u_texel) +
+    texture2D(u_tex, v_uv + vec2(-r2, r2)*u_texel) +
+    texture2D(u_tex, v_uv + vec2(  0., r2)*u_texel) +
+    texture2D(u_tex, v_uv + vec2( r2, r2)*u_texel) +
+    texture2D(u_tex, v_uv + vec2(-r, -r)*u_texel) +
+    texture2D(u_tex, v_uv + vec2( 0., -r)*u_texel) +
+    texture2D(u_tex, v_uv + vec2( r, -r)*u_texel) +
+    texture2D(u_tex, v_uv + vec2(-r,  0.)*u_texel) +
+    texture2D(u_tex, v_uv + vec2( r,  0.)*u_texel) +
+    texture2D(u_tex, v_uv + vec2(-r,  r)*u_texel) +
+    texture2D(u_tex, v_uv + vec2( 0.,  r)*u_texel) +
+    texture2D(u_tex, v_uv + vec2( r,  r)*u_texel)
+  ) / 16.0;
+}
+
 void main(){
   vec4 col = texture2D(u_tex, v_uv);
-  // skin softening: 9-tap box blur mixed with original
+
+  // beauty skin smoothing: luminance-aware blur
+  // bright areas (skin) get more blur, dark areas (edges/hair) stay sharp
   if(u_soft > 0.0){
-    float r = u_soft * 2.5;
-    vec4 blur =
-      texture2D(u_tex, v_uv + vec2(-r,-r)*u_texel) +
-      texture2D(u_tex, v_uv + vec2( 0.,-r)*u_texel) +
-      texture2D(u_tex, v_uv + vec2( r,-r)*u_texel) +
-      texture2D(u_tex, v_uv + vec2(-r, 0.)*u_texel) +
-      texture2D(u_tex, v_uv + vec2( r, 0.)*u_texel) +
-      texture2D(u_tex, v_uv + vec2(-r, r)*u_texel) +
-      texture2D(u_tex, v_uv + vec2( 0., r)*u_texel) +
-      texture2D(u_tex, v_uv + vec2( r, r)*u_texel);
-    blur /= 8.0;
-    col = mix(col, blur, u_soft * 0.72);
+    float r = 10.0 * u_soft;
+    vec4 blurred = sampleBlur(r);
+    float luma = dot(col.rgb, vec3(.2126,.7152,.0722));
+    // skin mask: blur more where it's bright and warm (skin tones)
+    float skinMask = smoothstep(0.25, 0.75, luma);
+    col = mix(col, blurred, skinMask * u_soft * 0.82);
+    // subtle highlight glow on bright areas (TikTok beauty glow)
+    col.rgb += blurred.rgb * u_soft * 0.06 * skinMask;
   }
+
   // warmth / tint
   col.r = clamp(col.r + u_w*.12, 0., 1.);
   col.b = clamp(col.b - u_w*.09, 0., 1.);
